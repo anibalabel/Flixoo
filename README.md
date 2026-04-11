@@ -23,3 +23,10 @@ tine que tener Flixoo – AI-Powered OTT CMS for Movies, Series & Live TV (Web +
 (https://codecanyon.net/item/flixoo-movies-and-tv-streaming-app/59566505)
 registra Url Masivas , optine los episodio de TMDB , Registrar Primero la serie y pelicula
 las tempodas se pueden registrar en la plataforma de Flixoo , aqui puedes registar tambien pero para idima LAT y CAST por Tempodad
+env.local , env
+DB_HOST=
+DB_PORT=
+DB_NAME=
+DB_USER=
+DB_PASSWORD=
+TMDB_TOKEN=( Token de acceso de lectura a la API TMDB )

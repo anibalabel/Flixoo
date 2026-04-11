@@ -218,15 +218,9 @@ const EpisodesSection: React.FC<EpisodesSectionProps> = ({ episodes, seasons, tv
     if (!show || !season) return;
 
     setIsTMDBLoading(true);
-    const TMDB_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIxNTU5ZjFmMGE4ODZhYTdlOTNmMjJlMDljNDdiOWM5ZSIsIm5iZiI6MTU4MzcwMDU0Mi44NCwic3ViIjoiNWU2NTVhM2U0NTlhZDYwMDExNTkzYzcwIiwic2NvcGVzIjpbImFwaV9yZWFkIl0sInZlcnNpb24iOjF9.ZOWuTVPOngZqSEgrSfBKN8AXpK77ADFwIvJibc3-ycI';
 
     try {
-      const response = await fetch(`https://api.themoviedb.org/3/tv/${show.tmdb_id}/season/${season.order}?language=es-ES`, {
-        headers: {
-          'accept': 'application/json',
-          'Authorization': `Bearer ${TMDB_TOKEN}`
-        }
-      });
+      const response = await fetch(`/api/tmdb/tv/${show.tmdb_id}/season/${season.order}?language=es-ES`);
 
       const data = await response.json();
       

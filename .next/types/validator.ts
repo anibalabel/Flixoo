@@ -137,6 +137,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../app/api/tmdb/tv/[tvId]/season/[seasonNumber]/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/tmdb/tv/[tvId]/season/[seasonNumber]">> = Specific
+  const handler = {} as typeof import("../../app/api/tmdb/tv/[tvId]/season/[seasonNumber]/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/api/tv_shows/[id]/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/tv_shows/[id]">> = Specific
