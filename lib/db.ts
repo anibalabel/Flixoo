@@ -1,11 +1,19 @@
 import mysql from 'mysql2/promise';
 
+function requireEnv(name: string) {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'mysql.us.cloudlogin.co',
+  host: requireEnv('DB_HOST'),
   port: parseInt(process.env.DB_PORT || '3306'),
-  database: process.env.DB_NAME || 'plusmovie_flixoo',
-  user: process.env.DB_USER || 'plusmovie_flixoo',
-  password: process.env.DB_PASSWORD || 'SF4rL60cj@',
+  database: requireEnv('DB_NAME'),
+  user: requireEnv('DB_USER'),
+  password: requireEnv('DB_PASSWORD'),
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,

@@ -21,6 +21,11 @@
       "static/chunks/main-app.js",
       "static/chunks/app/_not-found/page.js"
     ],
+    "/api/tv_shows/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/tv_shows/route.js"
+    ],
     "/api/seasons/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -35,21 +40,6 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/movies/route.js"
-    ],
-    "/api/tv_shows/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/tv_shows/route.js"
-    ],
-    "/api/movie_files/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/movie_files/route.js"
-    ],
-    "/api/movie_files/[id]/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/movie_files/[id]/route.js"
     ]
   }
 }
