@@ -1,0 +1,10 @@
+{
+  "/api/seasons/route": "app/api/seasons/route.js",
+  "/api/episodes/route": "app/api/episodes/route.js",
+  "/api/movies/route": "app/api/movies/route.js",
+  "/api/tv_shows/route": "app/api/tv_shows/route.js",
+  "/api/movie_files/route": "app/api/movie_files/route.js",
+  "/api/movie_files/[id]/route": "app/api/movie_files/[id]/route.js",
+  "/page": "app/page.js",
+  "/_not-found/page": "app/_not-found/page.js"
+}
