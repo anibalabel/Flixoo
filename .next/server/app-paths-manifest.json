@@ -1,4 +1,8 @@
 {
+  "/api/tv_shows/route": "app/api/tv_shows/route.js",
+  "/api/seasons/route": "app/api/seasons/route.js",
+  "/api/episodes/route": "app/api/episodes/route.js",
+  "/api/movies/route": "app/api/movies/route.js",
   "/page": "app/page.js",
   "/_not-found/page": "app/_not-found/page.js"
 }

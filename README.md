@@ -30,3 +30,43 @@ DB_NAME=
 DB_USER=
 DB_PASSWORD=
 TMDB_TOKEN=( Token de acceso de lectura a la API TMDB )
+
+## Eliminación en cascada (Integridad referencial)
+
+### Películas
+
+- Antes de eliminar una película, el panel consulta el conteo de videos asociados (tabla `movie_files` por `video_id`).
+- La confirmación muestra explícitamente cuántos videos serán eliminados junto con la película.
+- La eliminación se ejecuta en una transacción:
+  - `DELETE FROM movie_files WHERE video_id = <movieId>`
+  - `DELETE FROM movies WHERE id = <movieId>`
+- Si ocurre un error en cualquier paso, se hace rollback y no quedan datos en estado inconsistente.
+
+### Temporadas
+
+- Antes de eliminar una temporada, el panel consulta el conteo de episodios asociados (tabla `episodes` por `season_id`).
+- La confirmación muestra explícitamente cuántos episodios serán eliminados junto con la temporada.
+- La eliminación se ejecuta en una transacción:
+  - `DELETE FROM episodes WHERE season_id = <seasonId>`
+  - `DELETE FROM seasons WHERE id = <seasonId>`
+- Si ocurre un error en cualquier paso, se hace rollback.
+
+### Auditoría
+
+- Cada eliminación en cascada intenta registrar un evento en la tabla `admin_audit_logs`.
+- Si la tabla no existe, el servidor intenta crearla automáticamente (si la BD lo permite). Si no se puede, se registra el evento en logs del servidor como fallback.
+
+### Endpoints usados por el panel
+
+- Resumen previo (conteos):
+  - `GET /api/movies/:id` → `{ movieFilesCount, exists }`
+  - `GET /api/seasons/:id` → `{ episodesCount, exists }`
+- Eliminación en cascada (transaccional):
+  - `DELETE /api/movies/:id`
+  - `DELETE /api/seasons/:id`
+
+### Recomendación de rendimiento (BD)
+
+- Para un rendimiento óptimo con grandes volúmenes, se recomiendan índices:
+  - `movie_files(video_id)`
+  - `episodes(season_id)`

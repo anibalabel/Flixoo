@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "npx rimraf .next && cross-env NODE_ENV=production next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest run"
   },
   "dependencies": {
     "@google/genai": "^1.49.0",
@@ -36,6 +37,7 @@
     "eslint": "9.39.1",
     "firebase-tools": "^15.14.0",
     "tailwindcss": "4.1.11",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "^2.0.5"
   }
 }

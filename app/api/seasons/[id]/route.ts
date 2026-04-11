@@ -1,5 +1,21 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { deleteSeasonCascade, getSeasonDeleteSummary, parsePositiveIntId } from '@/lib/cascadeDelete';
+
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const seasonId = parsePositiveIntId(id);
+    if (!seasonId) {
+      return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    }
+
+    const summary = await getSeasonDeleteSummary(pool as any, seasonId);
+    return NextResponse.json(summary);
+  } catch (error: any) {
+    return NextResponse.json({ error: error?.message || 'Server error' }, { status: 500 });
+  }
+}
 
 export async function PUT(
   request: Request,
@@ -28,8 +44,21 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    await pool.query('DELETE FROM seasons WHERE id = ?', [id]);
-    return NextResponse.json({ status: 'success' });
+    const seasonId = parsePositiveIntId(id);
+    if (!seasonId) {
+      return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    }
+
+    const result = await deleteSeasonCascade(pool as any, seasonId, {
+      userAgent: request.headers.get('user-agent'),
+      ip: request.headers.get('x-forwarded-for'),
+    });
+
+    if (result.notFound) {
+      return NextResponse.json({ error: 'Season not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ status: 'success', ...result });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

@@ -32,6 +32,8 @@ const MovieFilesSection: React.FC<MovieFilesSectionProps> = ({ movie, onBack }) 
   const [isEditing, setIsEditing] = useState(false);
   const [bulkUrls, setBulkUrls] = useState('');
   const [isBulkImporting, setIsBulkImporting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 12;
   
   const [formData, setFormData] = useState<Partial<MovieFile>>({
     video_id: movie.id,
@@ -66,6 +68,10 @@ const MovieFilesSection: React.FC<MovieFilesSectionProps> = ({ movie, onBack }) 
   useEffect(() => {
     fetchFiles();
   }, [fetchFiles]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [movie.id]);
 
   const handleSaveSingle = async () => {
     if (!formData.file_url) return;
@@ -192,6 +198,13 @@ const MovieFilesSection: React.FC<MovieFilesSectionProps> = ({ movie, onBack }) 
     if (path.startsWith('http')) return path;
     return path;
   };
+
+  const totalPages = Math.ceil(files.length / ITEMS_PER_PAGE);
+  const paginatedFiles = files.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  useEffect(() => {
+    setCurrentPage((p) => Math.min(p, Math.max(1, totalPages)));
+  }, [totalPages]);
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -362,7 +375,7 @@ const MovieFilesSection: React.FC<MovieFilesSectionProps> = ({ movie, onBack }) 
                   <td colSpan={5} className="px-6 py-12 text-center text-gray-500 italic">No hay archivos registrados para esta película.</td>
                 </tr>
               ) : (
-                files.map((file) => (
+                paginatedFiles.map((file) => (
                   <tr key={file.id} className="hover:bg-gray-800/30 transition-colors group">
                     <td className="px-6 py-4 font-mono text-indigo-400 text-xs">{file.order}</td>
                     <td className="px-6 py-4 font-bold text-white">{file.label}</td>
@@ -388,6 +401,27 @@ const MovieFilesSection: React.FC<MovieFilesSectionProps> = ({ movie, onBack }) 
             </tbody>
           </table>
         </div>
+        {totalPages > 1 && (
+          <div className="p-4 border-t border-gray-800 flex justify-center items-center gap-4 bg-gray-900/50">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-4 py-2 bg-gray-800 text-white rounded-lg disabled:opacity-50 hover:bg-gray-700 transition-colors text-sm font-bold"
+            >
+              Anterior
+            </button>
+            <span className="text-gray-400 text-sm">
+              Página {currentPage} de {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2 bg-gray-800 text-white rounded-lg disabled:opacity-50 hover:bg-gray-700 transition-colors text-sm font-bold"
+            >
+              Siguiente
+            </button>
+          </div>
+        )}
       </div>
 
       <ConfirmModal 

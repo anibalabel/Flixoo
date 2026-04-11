@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { TVShow } from '../types';
-import { Tv, Plus, Edit, Trash, Save, Loader2, Database, Search } from 'lucide-react';
+import { Tv, Edit, Trash, Trash2, Save, Loader2, Database, Search } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import Modal from './Modal';
 import { toast } from 'sonner';
@@ -20,16 +20,21 @@ const TVShowsSection: React.FC<TVShowsSectionProps> = ({ tvShows, refreshData })
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: number | null; title: string }>({
     isOpen: false,
     id: null,
     title: ''
   });
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [formData, setFormData] = useState<Partial<TVShow>>({
     title: '',
     tmdb_id: '',
     thumbnail: '{"original_image":""}'
   });
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 12;
 
   const getImageUrlForPreview = (input: any) => {
     const placeholder = 'https://via.placeholder.com/342x513?text=No+Poster';
@@ -148,6 +153,70 @@ const TVShowsSection: React.FC<TVShowsSectionProps> = ({ tvShows, refreshData })
     show.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const totalPages = Math.ceil(filteredShows.length / ITEMS_PER_PAGE);
+  const paginatedShows = filteredShows.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
+  const selectedCount = selectedIds.length;
+  const visibleIds = useMemo(() => paginatedShows.map((s) => s.id), [paginatedShows]);
+  const isAllVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+
+  useEffect(() => {
+    const available = new Set(tvShows.map((s) => s.id));
+    setSelectedIds((prev) => prev.filter((id) => available.has(id)));
+  }, [tvShows]);
+
+  const toggleSelectAllVisible = () => {
+    setSelectedIds((prev) => {
+      if (isAllVisibleSelected) return prev.filter((id) => !visibleIds.includes(id));
+      const merged = new Set(prev);
+      for (const id of visibleIds) merged.add(id);
+      return Array.from(merged);
+    });
+  };
+
+  const toggleSelectOne = (id: number) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const confirmBulkDeleteAction = async () => {
+    if (selectedIds.length === 0) {
+      setConfirmBulkDelete(false);
+      return;
+    }
+
+    const idsToDelete = [...selectedIds];
+    setConfirmBulkDelete(false);
+    const toastId = toast.loading(`Eliminando ${idsToDelete.length} series...`);
+    try {
+      const results = await Promise.allSettled(
+        idsToDelete.map((id) =>
+          fetch(`${API_BASE_URL}/tv_shows/${id}`, { method: 'DELETE', headers: { Accept: 'application/json' } })
+        )
+      );
+
+      const failed = results.filter((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok));
+      await refreshData();
+      setSelectedIds([]);
+
+      if (failed.length > 0) {
+        toast.error(`Se eliminaron ${idsToDelete.length - failed.length} de ${idsToDelete.length}.`, { id: toastId });
+      } else {
+        toast.success(`Se eliminaron ${idsToDelete.length} series correctamente.`, { id: toastId });
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al eliminar las series seleccionadas.", { id: toastId });
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn">
       <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-2xl">
@@ -168,29 +237,50 @@ const TVShowsSection: React.FC<TVShowsSectionProps> = ({ tvShows, refreshData })
               />
             </div>
           </div>
-          <button 
-            onClick={() => { setIsEditing(false); setFormData({ title: '', tmdb_id: '', thumbnail: '{"original_image":""}' }); setShowModal(true); }}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg active:scale-95 flex items-center gap-2"
+          <button
+            type="button"
+            onClick={() => setConfirmBulkDelete(true)}
+            disabled={selectedCount === 0}
+            className="bg-red-600 hover:bg-red-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg active:scale-95 flex items-center gap-2 disabled:opacity-50 disabled:hover:bg-red-600"
+            title="Eliminar seleccionadas"
           >
-            <Plus className="w-4 h-4" /> Añadir Serie
+            <Trash2 className="w-4 h-4" /> Eliminar ({selectedCount})
           </button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-gray-800/50 text-gray-400 uppercase text-[10px] tracking-widest">
               <tr>
+                <th className="px-6 py-4 font-bold w-10">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded bg-gray-800 border-gray-700 text-indigo-600 focus:ring-indigo-500"
+                    checked={isAllVisibleSelected}
+                    onChange={toggleSelectAllVisible}
+                    aria-label="Seleccionar todas"
+                  />
+                </th>
                 <th className="px-6 py-4 font-bold">SERIE</th>
                 <th className="px-6 py-4 font-bold">TMDB ID</th>
                 <th className="px-6 py-4 font-bold text-right">ACCIONES</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {filteredShows.map((show) => {
+              {paginatedShows.map((show) => {
                 const previewUrl = getImageUrlForPreview(show.thumbnail);
                 const rawThumbnail = typeof show.thumbnail === 'object' ? JSON.stringify(show.thumbnail) : String(show.thumbnail);
 
                 return (
                     <tr key={show.id} className="hover:bg-gray-800/30 transition-colors group">
+                    <td className="px-6 py-4 align-middle">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded bg-gray-800 border-gray-700 text-indigo-600 focus:ring-indigo-500"
+                        checked={selectedIds.includes(show.id)}
+                        onChange={() => toggleSelectOne(show.id)}
+                        aria-label={`Seleccionar ${show.title}`}
+                      />
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-4">
                         <div className="w-14 h-20 flex-shrink-0 relative bg-gray-800 rounded-lg overflow-hidden border border-gray-700 shadow-md">
@@ -240,12 +330,33 @@ const TVShowsSection: React.FC<TVShowsSectionProps> = ({ tvShows, refreshData })
               })}
               {tvShows.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-6 py-10 text-center text-gray-500 italic">No hay series registradas en la base de datos.</td>
+                  <td colSpan={4} className="px-6 py-10 text-center text-gray-500 italic">No hay series registradas en la base de datos.</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+        {totalPages > 1 && (
+          <div className="p-4 border-t border-gray-800 flex justify-center items-center gap-4 bg-gray-900/50">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-4 py-2 bg-gray-800 text-white rounded-lg disabled:opacity-50 hover:bg-gray-700 transition-colors text-sm font-bold"
+            >
+              Anterior
+            </button>
+            <span className="text-gray-400 text-sm">
+              Página {currentPage} de {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2 bg-gray-800 text-white rounded-lg disabled:opacity-50 hover:bg-gray-700 transition-colors text-sm font-bold"
+            >
+              Siguiente
+            </button>
+          </div>
+        )}
       </div>
 
       <Modal 
@@ -299,6 +410,14 @@ const TVShowsSection: React.FC<TVShowsSectionProps> = ({ tvShows, refreshData })
         message={`¿Estás SEGURO de eliminar la serie "${confirmDelete.title}"? Esta acción no se puede deshacer.`}
         onConfirm={confirmDeleteAction}
         onCancel={() => setConfirmDelete({ isOpen: false, id: null, title: '' })}
+      />
+
+      <ConfirmModal
+        isOpen={confirmBulkDelete}
+        title="Confirmar Eliminación"
+        message={`¿Estás SEGURO de eliminar ${selectedCount} series seleccionadas? Esta acción no se puede deshacer.`}
+        onConfirm={confirmBulkDeleteAction}
+        onCancel={() => setConfirmBulkDelete(false)}
       />
     </div>
   );

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Season, TVShow, Episode } from '../types';
 import { GoogleGenAI } from "@google/genai";
-import { Layers, Plus, Edit, Trash, Save, Loader2, Wand2, AlertTriangle, Search } from 'lucide-react';
+import { Layers, Plus, Edit, Trash, Trash2, Save, Loader2, Wand2, AlertTriangle, Search } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import Modal from './Modal';
 import { toast } from 'sonner';
@@ -26,10 +26,16 @@ const SeasonsSection: React.FC<SeasonsSectionProps> = ({ seasons, tvShows, episo
   const [isSearching, setIsSearching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: number | null; name: string }>({
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkEpisodesCount, setBulkEpisodesCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 12;
+  const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: number | null; name: string; episodesCount: number }>({
     isOpen: false,
     id: null,
-    name: ''
+    name: '',
+    episodesCount: 0
   });
   const [language, setLanguage] = useState<LanguageType>('LAT');
   const [formData, setFormData] = useState<Partial<Season>>({
@@ -148,13 +154,117 @@ const SeasonsSection: React.FC<SeasonsSectionProps> = ({ seasons, tvShows, episo
       toast.error("Error de conexión");
       console.error(error); 
     } finally {
-      setConfirmDelete({ isOpen: false, id: null, name: '' });
+      setConfirmDelete({ isOpen: false, id: null, name: '', episodesCount: 0 });
+    }
+  };
+
+  const handleDeleteSeason = async (id: number, name: string) => {
+    const toastId = toast.loading('Calculando episodios asociados...');
+    try {
+      const response = await fetch(`${API_BASE_URL}/seasons/${id}`, { headers: { Accept: 'application/json' } });
+      const summary = await response.json();
+      if (!response.ok) {
+        toast.error('No se pudo calcular el conteo de episodios.', { id: toastId });
+        return;
+      }
+      const episodesCount = Number(summary?.episodesCount ?? 0);
+      setConfirmDelete({ isOpen: true, id, name, episodesCount });
+      toast.dismiss(toastId);
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al calcular el conteo de episodios.', { id: toastId });
     }
   };
 
   const filteredSeasons = seasons.filter(s => 
     s.season_name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const totalPages = Math.ceil(filteredSeasons.length / ITEMS_PER_PAGE);
+  const paginatedSeasons = filteredSeasons.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
+  const selectedCount = selectedIds.length;
+  const visibleIds = React.useMemo(() => paginatedSeasons.map((s) => s.id), [paginatedSeasons]);
+  const isAllVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+
+  React.useEffect(() => {
+    const available = new Set(seasons.map((s) => s.id));
+    setSelectedIds((prev) => prev.filter((id) => available.has(id)));
+  }, [seasons]);
+
+  const toggleSelectAllVisible = () => {
+    setSelectedIds((prev) => {
+      if (isAllVisibleSelected) return prev.filter((id) => !visibleIds.includes(id));
+      const merged = new Set(prev);
+      for (const id of visibleIds) merged.add(id);
+      return Array.from(merged);
+    });
+  };
+
+  const toggleSelectOne = (id: number) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const confirmBulkDeleteAction = async () => {
+    if (selectedIds.length === 0) {
+      setConfirmBulkDelete(false);
+      return;
+    }
+
+    const idsToDelete = [...selectedIds];
+    setConfirmBulkDelete(false);
+    const toastId = toast.loading(`Eliminando ${idsToDelete.length} temporadas...`);
+    try {
+      const results = await Promise.allSettled(
+        idsToDelete.map((id) =>
+          fetch(`${API_BASE_URL}/seasons/${id}`, { method: 'DELETE', headers: { Accept: 'application/json' } })
+        )
+      );
+
+      const failed = results.filter((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok));
+      await refreshData();
+      setSelectedIds([]);
+
+      if (failed.length > 0) {
+        toast.error(`Se eliminaron ${idsToDelete.length - failed.length} de ${idsToDelete.length}.`, { id: toastId });
+      } else {
+        toast.success(`Se eliminaron ${idsToDelete.length} temporadas correctamente.`, { id: toastId });
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al eliminar las temporadas seleccionadas.", { id: toastId });
+    }
+  };
+
+  const openBulkDeleteConfirm = async () => {
+    if (selectedIds.length === 0) return;
+    const ids = [...selectedIds];
+    const toastId = toast.loading('Calculando episodios asociados...');
+    try {
+      const summaries = await Promise.all(
+        ids.map(async (id) => {
+          const res = await fetch(`${API_BASE_URL}/seasons/${id}`, { headers: { Accept: 'application/json' } });
+          const body = await res.json();
+          if (!res.ok) throw new Error('summary_failed');
+          return Number(body?.episodesCount ?? 0);
+        })
+      );
+      const total = summaries.reduce((acc, n) => acc + n, 0);
+      setBulkEpisodesCount(total);
+      setConfirmBulkDelete(true);
+      toast.dismiss(toastId);
+    } catch (error) {
+      console.error(error);
+      toast.error('No se pudo calcular el conteo de episodios.', { id: toastId });
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -175,14 +285,34 @@ const SeasonsSection: React.FC<SeasonsSectionProps> = ({ seasons, tvShows, episo
               />
             </div>
           </div>
-          <button onClick={() => { setIsEditing(false); setFormData({ season_name: '', tv_show_id: '', order: 1, status: 1 }); setShowModal(true); }} className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Nueva Temporada
-          </button>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={openBulkDeleteConfirm}
+              disabled={selectedCount === 0}
+              className="bg-red-600 hover:bg-red-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg active:scale-95 flex items-center gap-2 disabled:opacity-50 disabled:hover:bg-red-600"
+              title="Eliminar seleccionadas"
+            >
+              <Trash2 className="w-4 h-4" /> Eliminar ({selectedCount})
+            </button>
+            <button onClick={() => { setIsEditing(false); setFormData({ season_name: '', tv_show_id: '', order: 1, status: 1 }); setShowModal(true); }} className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2">
+              <Plus className="w-4 h-4" /> Nueva Temporada
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-gray-800/50 text-gray-400 uppercase text-[10px] tracking-widest">
               <tr>
+                <th className="px-6 py-4 font-bold w-10">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded bg-gray-800 border-gray-700 text-indigo-600 focus:ring-indigo-500"
+                    checked={isAllVisibleSelected}
+                    onChange={toggleSelectAllVisible}
+                    aria-label="Seleccionar todas"
+                  />
+                </th>
                 <th className="px-6 py-4 font-bold">SERIE ID</th>
                 <th className="px-6 py-4 font-bold">NOMBRE</th>
                 <th className="px-6 py-4 font-bold text-center">ORDEN</th>
@@ -191,8 +321,17 @@ const SeasonsSection: React.FC<SeasonsSectionProps> = ({ seasons, tvShows, episo
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {filteredSeasons.map((s) => (
-                <tr key={s.id} className="hover:bg-gray-800/30 transition-colors group">
+              {paginatedSeasons.map((s) => (
+                <tr key={s.id} className={`hover:bg-gray-800/30 transition-colors group ${selectedIds.includes(s.id) ? 'bg-indigo-900/20' : ''}`}>
+                  <td className="px-6 py-4">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 rounded bg-gray-800 border-gray-700 text-indigo-600 focus:ring-indigo-500"
+                      checked={selectedIds.includes(s.id)}
+                      onChange={() => toggleSelectOne(s.id)}
+                      aria-label={`Seleccionar ${s.season_name}`}
+                    />
+                  </td>
                   <td className="px-6 py-4 font-mono text-indigo-300 text-xs">{s.tv_show_id}</td>
                   <td className="px-6 py-4 font-bold text-white">{s.season_name}</td>
                   <td className="px-6 py-4 text-center text-white font-mono">{s.order}</td>
@@ -204,7 +343,7 @@ const SeasonsSection: React.FC<SeasonsSectionProps> = ({ seasons, tvShows, episo
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
                       <button onClick={() => { setIsEditing(true); setFormData(s); setShowModal(true); }} className="text-gray-400 hover:text-indigo-400 p-2"><Edit className="w-4 h-4" /></button>
-                      <button onClick={() => setConfirmDelete({ isOpen: true, id: s.id, name: s.season_name })} className="text-gray-400 hover:text-red-400 p-2"><Trash className="w-4 h-4" /></button>
+                      <button onClick={() => handleDeleteSeason(s.id, s.season_name)} className="text-gray-400 hover:text-red-400 p-2"><Trash className="w-4 h-4" /></button>
                     </div>
                   </td>
                 </tr>
@@ -212,6 +351,27 @@ const SeasonsSection: React.FC<SeasonsSectionProps> = ({ seasons, tvShows, episo
             </tbody>
           </table>
         </div>
+        {totalPages > 1 && (
+          <div className="p-4 border-t border-gray-800 flex justify-center items-center gap-4 bg-gray-900/50">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-4 py-2 bg-gray-800 text-white rounded-lg disabled:opacity-50 hover:bg-gray-700 transition-colors text-sm font-bold"
+            >
+              Anterior
+            </button>
+            <span className="text-gray-400 text-sm">
+              Página {currentPage} de {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2 bg-gray-800 text-white rounded-lg disabled:opacity-50 hover:bg-gray-700 transition-colors text-sm font-bold"
+            >
+              Siguiente
+            </button>
+          </div>
+        )}
       </div>
 
       <Modal 
@@ -275,10 +435,20 @@ const SeasonsSection: React.FC<SeasonsSectionProps> = ({ seasons, tvShows, episo
 
       <ConfirmModal 
         isOpen={confirmDelete.isOpen}
-        title="Confirmar Eliminación"
-        message={`¿Estás SEGURO de eliminar la temporada "${confirmDelete.name}"? Esta acción no se puede deshacer.`}
+        title="Eliminar Temporada"
+        message={`¿Estás SEGURO de eliminar la temporada "${confirmDelete.name}"? También se eliminarán ${confirmDelete.episodesCount} episodios contenidos en esta temporada. Esta acción no se puede deshacer.`}
         onConfirm={executeDelete}
-        onCancel={() => setConfirmDelete({ isOpen: false, id: null, name: '' })}
+        onCancel={() => setConfirmDelete({ isOpen: false, id: null, name: '', episodesCount: 0 })}
+        confirmText="Eliminar"
+      />
+
+      <ConfirmModal
+        isOpen={confirmBulkDelete}
+        title="Eliminar Temporadas Seleccionadas"
+        message={`¿Estás seguro de que deseas eliminar las ${selectedCount} temporadas seleccionadas? Además se eliminarán ${bulkEpisodesCount} episodios contenidos en esas temporadas. Esta acción no se puede deshacer.`}
+        onConfirm={confirmBulkDeleteAction}
+        onCancel={() => setConfirmBulkDelete(false)}
+        confirmText="Eliminar"
       />
     </div>
   );

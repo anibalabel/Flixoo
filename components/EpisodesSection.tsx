@@ -9,6 +9,7 @@ import {
   Plus, 
   Edit, 
   Trash, 
+  Trash2,
   Save, 
   Loader2, 
   Wand2, 
@@ -47,6 +48,11 @@ const EpisodesSection: React.FC<EpisodesSectionProps> = ({ episodes, seasons, tv
   const [isTMDBLoading, setIsTMDBLoading] = useState(false);
   const [tmdbEpisodes, setTmdbEpisodes] = useState<any[]>([]);
   const [selectedEpisodes, setSelectedEpisodes] = useState<number[]>([]);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 12;
+
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: number | null; name: string }>({
     isOpen: false,
     id: null,
@@ -368,6 +374,69 @@ const EpisodesSection: React.FC<EpisodesSectionProps> = ({ episodes, seasons, tv
     });
   };
 
+  const totalPages = Math.ceil(filteredEpisodes.length / ITEMS_PER_PAGE);
+  const paginatedEpisodes = filteredEpisodes.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedSeriesId, selectedSeasonId]);
+
+  const selectedCount = selectedIds.length;
+  const visibleIds = React.useMemo(() => paginatedEpisodes.map((s) => s.id), [paginatedEpisodes]);
+  const isAllVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+
+  React.useEffect(() => {
+    const available = new Set(episodes.map((s) => s.id));
+    setSelectedIds((prev) => prev.filter((id) => available.has(id)));
+  }, [episodes]);
+
+  const toggleSelectAllVisible = () => {
+    setSelectedIds((prev) => {
+      if (isAllVisibleSelected) return prev.filter((id) => !visibleIds.includes(id));
+      const merged = new Set(prev);
+      for (const id of visibleIds) merged.add(id);
+      return Array.from(merged);
+    });
+  };
+
+  const toggleSelectOne = (id: number) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const confirmBulkDeleteAction = async () => {
+    if (selectedIds.length === 0) {
+      setConfirmBulkDelete(false);
+      return;
+    }
+
+    const idsToDelete = [...selectedIds];
+    setConfirmBulkDelete(false);
+    const toastId = toast.loading(`Eliminando ${idsToDelete.length} episodios...`);
+    try {
+      const results = await Promise.allSettled(
+        idsToDelete.map((id) =>
+          fetch(`${API_BASE_URL}/episodes/${id}`, { method: 'DELETE', headers: { Accept: 'application/json' } })
+        )
+      );
+
+      const failed = results.filter((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok));
+      await refreshData();
+      setSelectedIds([]);
+
+      if (failed.length > 0) {
+        toast.error(`Se eliminaron ${idsToDelete.length - failed.length} de ${idsToDelete.length}.`, { id: toastId });
+      } else {
+        toast.success(`Se eliminaron ${idsToDelete.length} episodios correctamente.`, { id: toastId });
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al eliminar los episodios seleccionados.", { id: toastId });
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn">
       <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-2xl">
@@ -418,23 +487,29 @@ const EpisodesSection: React.FC<EpisodesSectionProps> = ({ episodes, seasons, tv
             </div>
           </div>
           <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setConfirmBulkDelete(true)}
+              disabled={selectedCount === 0}
+              className="bg-red-600 hover:bg-red-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg active:scale-95 flex items-center gap-2 disabled:opacity-50 disabled:hover:bg-red-600"
+              title="Eliminar seleccionadas"
+            >
+              <Trash2 className="w-4 h-4" /> Eliminar ({selectedCount})
+            </button>
             <button 
               onClick={() => setShowTMDBModal(true)}
               className="bg-indigo-600/20 hover:bg-indigo-600 text-indigo-400 hover:text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 border border-indigo-500/30 shadow-lg"
             >
               <Wand2 className="w-4 h-4" /> Importar TMDB
             </button>
-            <button 
-              onClick={() => setShowBulkModal(true)}
-              className="bg-gray-800 hover:bg-gray-700 text-indigo-400 px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 border border-gray-700"
+            <button
+              type="button"
+              aria-disabled="true"
+              title="boton desabilitado"
+              onClick={() => toast.warning('boton desabilitado')}
+              className="bg-gray-800 text-gray-500 px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 border border-gray-700 cursor-not-allowed"
             >
               <DownloadCloud className="w-4 h-4" /> Importar URLs
-            </button>
-            <button 
-              onClick={() => { setIsEditing(false); setFormData({ episode_name: '', season_id: 0, series_id: 0, file_source: '', source_type: 'embed', file_url: '', order: 1, runtime: '00:00', poster: '{"original_image":""}', description: '' }); setShowModal(true); }}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" /> Nuevo Episodio
             </button>
           </div>
         </div>
@@ -442,6 +517,15 @@ const EpisodesSection: React.FC<EpisodesSectionProps> = ({ episodes, seasons, tv
           <table className="w-full text-left">
             <thead className="bg-gray-800/50 text-gray-400 uppercase text-[10px] tracking-widest">
               <tr>
+                <th className="px-6 py-4 font-bold w-10">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded bg-gray-800 border-gray-700 text-indigo-600 focus:ring-indigo-500"
+                    checked={isAllVisibleSelected}
+                    onChange={toggleSelectAllVisible}
+                    aria-label="Seleccionar todas"
+                  />
+                </th>
                 <th className="px-6 py-4 font-bold">EPISODIO</th>
                 <th className="px-6 py-4 font-bold">SERIE / TEMP</th>
                 <th className="px-6 py-4 font-bold">FUENTE</th>
@@ -449,9 +533,18 @@ const EpisodesSection: React.FC<EpisodesSectionProps> = ({ episodes, seasons, tv
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {filteredEpisodes.length > 0 ? (
-                filteredEpisodes.map((ep) => (
-                  <tr key={ep.id} className="hover:bg-gray-800/30 transition-colors group">
+              {paginatedEpisodes.length > 0 ? (
+                paginatedEpisodes.map((ep) => (
+                  <tr key={ep.id} className={`hover:bg-gray-800/30 transition-colors group ${selectedIds.includes(ep.id) ? 'bg-indigo-900/20' : ''}`}>
+                    <td className="px-6 py-4">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded bg-gray-800 border-gray-700 text-indigo-600 focus:ring-indigo-500"
+                        checked={selectedIds.includes(ep.id)}
+                        onChange={() => toggleSelectOne(ep.id)}
+                        aria-label={`Seleccionar ${ep.episode_name}`}
+                      />
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-16 bg-gray-800 rounded overflow-hidden border border-gray-700">
@@ -492,12 +585,33 @@ const EpisodesSection: React.FC<EpisodesSectionProps> = ({ episodes, seasons, tv
                 ))
               ) : (
                 <tr>
-                  <td colSpan={4} className="px-6 py-10 text-center text-gray-500 italic">No se encontraron episodios para los filtros seleccionados.</td>
+                  <td colSpan={5} className="px-6 py-10 text-center text-gray-500 italic">No se encontraron episodios para los filtros seleccionados.</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+        {totalPages > 1 && (
+          <div className="p-4 border-t border-gray-800 flex justify-center items-center gap-4 bg-gray-900/50">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-4 py-2 bg-gray-800 text-white rounded-lg disabled:opacity-50 hover:bg-gray-700 transition-colors text-sm font-bold"
+            >
+              Anterior
+            </button>
+            <span className="text-gray-400 text-sm">
+              Página {currentPage} de {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2 bg-gray-800 text-white rounded-lg disabled:opacity-50 hover:bg-gray-700 transition-colors text-sm font-bold"
+            >
+              Siguiente
+            </button>
+          </div>
+        )}
       </div>
 
       <Modal 
@@ -746,6 +860,14 @@ const EpisodesSection: React.FC<EpisodesSectionProps> = ({ episodes, seasons, tv
         message={`¿Estás SEGURO de eliminar el episodio "${confirmDelete.name}"? Esta acción no se puede deshacer.`}
         onConfirm={confirmDeleteAction}
         onCancel={() => setConfirmDelete({ isOpen: false, id: null, name: '' })}
+      />
+
+      <ConfirmModal
+        isOpen={confirmBulkDelete}
+        title="Eliminar Episodios Seleccionados"
+        message={`¿Estás seguro de que deseas eliminar los ${selectedCount} episodios seleccionados? Esta acción no se puede deshacer.`}
+        onConfirm={confirmBulkDeleteAction}
+        onCancel={() => setConfirmBulkDelete(false)}
       />
     </div>
   );

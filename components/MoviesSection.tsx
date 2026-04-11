@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Image from 'next/image';
 import { Movie } from '../types';
-import { Film, Plus, Edit, Trash, Save, Loader2, Star, Search, Link as LinkIcon } from 'lucide-react';
+import { Film, Edit, Trash, Trash2, Save, Loader2, Star, Search, Link as LinkIcon } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import { toast } from 'sonner';
 
@@ -20,10 +20,17 @@ const MoviesSection: React.FC<MoviesSectionProps> = ({ movies, refreshData, onMa
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: number | null; title: string }>({
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkMovieFilesCount, setBulkMovieFilesCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 12;
+
+  const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: number | null; title: string; movieFilesCount: number }>({
     isOpen: false,
     id: null,
-    title: ''
+    title: '',
+    movieFilesCount: 0
   });
   const [formData, setFormData] = useState<Partial<Movie>>({
     title: '',
@@ -74,8 +81,22 @@ const MoviesSection: React.FC<MoviesSectionProps> = ({ movies, refreshData, onMa
     setShowModal(true);
   };
 
-  const handleDelete = (id: number, title: string) => {
-    setConfirmDelete({ isOpen: true, id, title });
+  const handleDelete = async (id: number, title: string) => {
+    const toastId = toast.loading('Calculando videos asociados...');
+    try {
+      const response = await fetch(`${API_BASE_URL}/movies/${id}`, { headers: { Accept: 'application/json' } });
+      const summary = await response.json();
+      if (!response.ok) {
+        toast.error('No se pudo calcular el conteo de videos asociados.', { id: toastId });
+        return;
+      }
+      const movieFilesCount = Number(summary?.movieFilesCount ?? 0);
+      setConfirmDelete({ isOpen: true, id, title, movieFilesCount });
+      toast.dismiss(toastId);
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al calcular el conteo de videos asociados.', { id: toastId });
+    }
   };
 
   const confirmDeleteAction = async () => {
@@ -92,7 +113,7 @@ const MoviesSection: React.FC<MoviesSectionProps> = ({ movies, refreshData, onMa
         toast.error("Error de conexión");
         console.error(error);
       } finally {
-        setConfirmDelete({ isOpen: false, id: null, title: '' });
+        setConfirmDelete({ isOpen: false, id: null, title: '', movieFilesCount: 0 });
       }
     }
   };
@@ -126,6 +147,92 @@ const MoviesSection: React.FC<MoviesSectionProps> = ({ movies, refreshData, onMa
     movie.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const totalPages = Math.ceil(filteredMovies.length / ITEMS_PER_PAGE);
+  const paginatedMovies = filteredMovies.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
+  const selectedCount = selectedIds.length;
+  const visibleIds = React.useMemo(() => paginatedMovies.map((s) => s.id), [paginatedMovies]);
+  const isAllVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+
+  React.useEffect(() => {
+    const available = new Set(movies.map((s) => s.id));
+    setSelectedIds((prev) => prev.filter((id) => available.has(id)));
+  }, [movies]);
+
+  const toggleSelectAllVisible = () => {
+    setSelectedIds((prev) => {
+      if (isAllVisibleSelected) return prev.filter((id) => !visibleIds.includes(id));
+      const merged = new Set(prev);
+      for (const id of visibleIds) merged.add(id);
+      return Array.from(merged);
+    });
+  };
+
+  const toggleSelectOne = (id: number) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const confirmBulkDeleteAction = async () => {
+    if (selectedIds.length === 0) {
+      setConfirmBulkDelete(false);
+      return;
+    }
+
+    const idsToDelete = [...selectedIds];
+    setConfirmBulkDelete(false);
+    const toastId = toast.loading(`Eliminando ${idsToDelete.length} películas...`);
+    try {
+      const results = await Promise.allSettled(
+        idsToDelete.map((id) =>
+          fetch(`${API_BASE_URL}/movies/${id}`, { method: 'DELETE', headers: { Accept: 'application/json' } })
+        )
+      );
+
+      const failed = results.filter((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok));
+      await refreshData();
+      setSelectedIds([]);
+
+      if (failed.length > 0) {
+        toast.error(`Se eliminaron ${idsToDelete.length - failed.length} de ${idsToDelete.length}.`, { id: toastId });
+      } else {
+        toast.success(`Se eliminaron ${idsToDelete.length} películas correctamente.`, { id: toastId });
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al eliminar las películas seleccionadas.", { id: toastId });
+    }
+  };
+
+  const openBulkDeleteConfirm = async () => {
+    if (selectedIds.length === 0) return;
+    const ids = [...selectedIds];
+    const toastId = toast.loading('Calculando videos asociados...');
+    try {
+      const summaries = await Promise.all(
+        ids.map(async (id) => {
+          const res = await fetch(`${API_BASE_URL}/movies/${id}`, { headers: { Accept: 'application/json' } });
+          const body = await res.json();
+          if (!res.ok) throw new Error('summary_failed');
+          return Number(body?.movieFilesCount ?? 0);
+        })
+      );
+      const total = summaries.reduce((acc, n) => acc + n, 0);
+      setBulkMovieFilesCount(total);
+      setConfirmBulkDelete(true);
+      toast.dismiss(toastId);
+    } catch (error) {
+      console.error(error);
+      toast.error('No se pudo calcular el conteo de videos asociados.', { id: toastId });
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn">
       <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-2xl">
@@ -146,22 +253,46 @@ const MoviesSection: React.FC<MoviesSectionProps> = ({ movies, refreshData, onMa
               />
             </div>
           </div>
-          <button onClick={() => { setIsEditing(false); setFormData({ title: '', thumbnail: '{"original_image":""}', is_featured: 0 }); setShowModal(true); }} className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Añadir Película
+          <button
+            type="button"
+            onClick={openBulkDeleteConfirm}
+            disabled={selectedCount === 0}
+            className="bg-red-600 hover:bg-red-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg active:scale-95 flex items-center gap-2 disabled:opacity-50 disabled:hover:bg-red-600"
+            title="Eliminar seleccionadas"
+          >
+            <Trash2 className="w-4 h-4" /> Eliminar ({selectedCount})
           </button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-gray-800/50 text-gray-400 uppercase text-[10px] tracking-widest">
               <tr>
+                <th className="px-6 py-4 font-bold w-10">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded bg-gray-800 border-gray-700 text-indigo-600 focus:ring-indigo-500"
+                    checked={isAllVisibleSelected}
+                    onChange={toggleSelectAllVisible}
+                    aria-label="Seleccionar todas"
+                  />
+                </th>
                 <th className="px-6 py-4 font-bold">PELÍCULA</th>
                 <th className="px-6 py-4 font-bold">DESTACADO</th>
                 <th className="px-6 py-4 font-bold text-right">ACCIONES</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {filteredMovies.map((movie) => (
-                <tr key={movie.id} className="hover:bg-gray-800/30 transition-colors group">
+              {paginatedMovies.map((movie) => (
+                <tr key={movie.id} className={`hover:bg-gray-800/30 transition-colors group ${selectedIds.includes(movie.id) ? 'bg-indigo-900/20' : ''}`}>
+                  <td className="px-6 py-4">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 rounded bg-gray-800 border-gray-700 text-indigo-600 focus:ring-indigo-500"
+                      checked={selectedIds.includes(movie.id)}
+                      onChange={() => toggleSelectOne(movie.id)}
+                      aria-label={`Seleccionar ${movie.title}`}
+                    />
+                  </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-16 bg-gray-800 rounded overflow-hidden border border-gray-700 relative">
@@ -203,6 +334,27 @@ const MoviesSection: React.FC<MoviesSectionProps> = ({ movies, refreshData, onMa
             </tbody>
           </table>
         </div>
+        {totalPages > 1 && (
+          <div className="p-4 border-t border-gray-800 flex justify-center items-center gap-4 bg-gray-900/50">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-4 py-2 bg-gray-800 text-white rounded-lg disabled:opacity-50 hover:bg-gray-700 transition-colors text-sm font-bold"
+            >
+              Anterior
+            </button>
+            <span className="text-gray-400 text-sm">
+              Página {currentPage} de {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2 bg-gray-800 text-white rounded-lg disabled:opacity-50 hover:bg-gray-700 transition-colors text-sm font-bold"
+            >
+              Siguiente
+            </button>
+          </div>
+        )}
       </div>
 
       {showModal && (
@@ -238,10 +390,20 @@ const MoviesSection: React.FC<MoviesSectionProps> = ({ movies, refreshData, onMa
 
       <ConfirmModal 
         isOpen={confirmDelete.isOpen}
-        title="Confirmar Eliminación"
-        message={`¿Estás SEGURO de eliminar la película "${confirmDelete.title}"? Esta acción no se puede deshacer.`}
+        title="Eliminar Película"
+        message={`¿Estás SEGURO de eliminar la película "${confirmDelete.title}"? También se eliminarán ${confirmDelete.movieFilesCount} videos asociados. Esta acción no se puede deshacer.`}
         onConfirm={confirmDeleteAction}
-        onCancel={() => setConfirmDelete({ isOpen: false, id: null, title: '' })}
+        onCancel={() => setConfirmDelete({ isOpen: false, id: null, title: '', movieFilesCount: 0 })}
+        confirmText="Eliminar"
+      />
+
+      <ConfirmModal
+        isOpen={confirmBulkDelete}
+        title="Eliminar Películas Seleccionadas"
+        message={`¿Estás seguro de que deseas eliminar las ${selectedCount} películas seleccionadas? Además se eliminarán ${bulkMovieFilesCount} videos asociados. Esta acción no se puede deshacer.`}
+        onConfirm={confirmBulkDeleteAction}
+        onCancel={() => setConfirmBulkDelete(false)}
+        confirmText="Eliminar"
       />
     </div>
   );

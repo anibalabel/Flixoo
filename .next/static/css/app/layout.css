@@ -283,6 +283,9 @@
   .top-\[-20\%\] {
     top: -20%;
   }
+  .right-4 {
+    right: calc(var(--spacing) * 4);
+  }
   .right-\[-10\%\] {
     right: -10%;
   }
@@ -541,6 +544,9 @@
   }
   .animate-spin {
     animation: var(--animate-spin);
+  }
+  .cursor-not-allowed {
+    cursor: not-allowed;
   }
   .cursor-pointer {
     cursor: pointer;
@@ -1037,6 +1043,9 @@
   .text-right {
     text-align: right;
   }
+  .align-middle {
+    vertical-align: middle;
+  }
   .font-mono {
     font-family: var(--font-mono);
   }
@@ -1430,6 +1439,13 @@
       }
     }
   }
+  .hover\:text-gray-300 {
+    &:hover {
+      @media (hover: hover) {
+        color: var(--color-gray-300);
+      }
+    }
+  }
   .hover\:text-gray-400 {
     &:hover {
       @media (hover: hover) {
@@ -1513,6 +1529,15 @@
   .disabled\:opacity-50 {
     &:disabled {
       opacity: 50%;
+    }
+  }
+  .disabled\:hover\:bg-red-600 {
+    &:disabled {
+      &:hover {
+        @media (hover: hover) {
+          background-color: var(--color-red-600);
+        }
+      }
     }
   }
   .sm\:block {

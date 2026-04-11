@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Play, Mail, Lock, CircleAlert, CircleCheck, Loader2, ArrowRight } from 'lucide-react';
+import { Play, Mail, Lock, CircleAlert, CircleCheck, Loader2, ArrowRight, Eye, EyeOff } from 'lucide-react';
 
 interface LoginProps {
   onLogin: () => void;
@@ -10,6 +10,7 @@ interface LoginProps {
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -77,7 +78,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Contraseña</label>
               <div className="relative">
                 <input 
-                  type="password" 
+                  type={isPasswordVisible ? 'text' : 'password'} 
                   required
                   className="w-full bg-gray-800 border-2 border-transparent focus:border-indigo-500 rounded-2xl px-12 py-4 text-white text-sm outline-none transition-all placeholder:text-gray-600" 
                   placeholder="••••••••"
@@ -85,6 +86,14 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   onChange={(e) => setPassword(e.target.value)}
                 />
                 <Lock className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-600" />
+                <button
+                  type="button"
+                  onClick={() => setIsPasswordVisible((prev) => !prev)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-300 transition-colors"
+                  aria-label={isPasswordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                >
+                  {isPasswordVisible ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
               </div>
             </div>
 
